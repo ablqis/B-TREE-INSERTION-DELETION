@@ -1,0 +1,246 @@
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.Queue;
+
+public class BPlusTree {
+    private Node root;
+    private int degree;
+
+    public BPlusTree(int degree) {
+        this.root = null;
+        this.degree = degree;
+    }
+
+    static class Node {
+        ArrayList<Integer> keys;
+        ArrayList<Node> children;
+        Node parent;
+
+        Node() {
+            keys = new ArrayList<>();
+            children = new ArrayList<>();
+            parent = null;
+        }
+    }
+
+    public void insert(int key) {
+        if (root == null) {
+            root = new Node();
+            root.keys.add(key);
+        } else {
+            Node current = findLeafNode(root, key);
+            insertIntoNode(current, key);
+
+            while (current.keys.size() == degree) {
+                current = splitNode(current);
+            }
+        }
+    }
+
+    private Node findLeafNode(Node node, int key) {
+        while (!node.children.isEmpty()) {
+            int index = findChildIndex(node, key);
+            node = node.children.get(index);
+        }
+        return node;
+    }
+
+    private int findChildIndex(Node node, int key) {
+        int index = 0;
+        while (index < node.keys.size() && key > node.keys.get(index)) {
+            index++;
+        }
+        return index;
+    }
+
+    private void insertIntoNode(Node node, int key) {
+        int index = 0;
+        while (index < node.keys.size() && key > node.keys.get(index)) {
+            index++;
+        }
+        node.keys.add(index, key);
+    }
+
+    private Node splitNode(Node node) {
+        Node newRight = new Node();
+        int midIndex = node.keys.size() / 2;
+
+        for (int i = midIndex; i < node.keys.size(); i++) {
+            newRight.keys.add(node.keys.get(i));
+        }
+        node.keys.subList(midIndex, node.keys.size()).clear();
+
+        if (node.parent == null) {
+            Node newRoot = new Node();
+            newRoot.keys.add(newRight.keys.get(0));
+            newRoot.children.add(node);
+            newRoot.children.add(newRight);
+
+            node.parent = newRoot;
+            newRight.parent = newRoot;
+
+            root = newRoot;
+        } else {
+            Node parent = node.parent;
+            int parentIndex = findChildIndex(parent, newRight.keys.get(0));
+            parent.keys.add(parentIndex, newRight.keys.get(0));
+            parent.children.add(parentIndex + 1, newRight);
+
+            newRight.parent = parent;
+        }
+
+        return node.parent;
+    }
+
+    public void delete(int key) {
+        if (root == null) {
+            System.out.println("Tree is empty. Cannot delete.");
+            return;
+        }
+
+        Node leafNode = findLeafNode(root, key);
+        if (leafNode.keys.contains(key)) {
+            leafNode.keys.remove(Integer.valueOf(key));
+
+            // If keys in the leaf node fall below degree, adjust the tree
+            if (leafNode.keys.size() < degree / 2) {
+                handleUnderflow(leafNode);
+            }
+        } else {
+            System.out.println("Key not found. Cannot delete.");
+        }
+    }
+
+    private void handleUnderflow(Node node) {
+        if (node.parent == null) {
+            // Node is the root
+            if (node.keys.isEmpty()) {
+                if (!node.children.isEmpty()) {
+                    root = node.children.get(0);
+                    root.parent = null;
+                }
+            }
+        } else {
+            Node parent = node.parent;
+            int index = parent.children.indexOf(node);
+
+            // Try borrowing from the left sibling
+            if (index > 0 && parent.children.get(index - 1).keys.size() > degree / 2) {
+                borrowFromLeftSibling(parent, index);
+            }
+            // Try borrowing from the right sibling
+            else if (index < parent.children.size() - 1 && parent.children.get(index + 1).keys.size() > degree / 2) {
+                borrowFromRightSibling(parent, index);
+            }
+            // Merge with left sibling
+            else if (index > 0) {
+                mergeWithLeftSibling(parent, index);
+            }
+            // Merge with right sibling
+            else {
+                mergeWithRightSibling(parent, index);
+            }
+
+            // Recursively handle underflow in the parent
+            handleUnderflow(parent);
+        }
+    }
+
+    private void borrowFromLeftSibling(Node parent, int index) {
+        Node node = parent.children.get(index);
+        Node leftSibling = parent.children.get(index - 1);
+
+        // Borrow the last key from the left sibling
+        int borrowedKey = leftSibling.keys.remove(leftSibling.keys.size() - 1);
+        node.keys.add(0, borrowedKey);
+
+        // Update parent key
+        parent.keys.set(index - 1, node.keys.get(0));
+    }
+
+    private void borrowFromRightSibling(Node parent, int index) {
+        Node node = parent.children.get(index);
+        Node rightSibling = parent.children.get(index + 1);
+
+        // Borrow the first key from the right sibling
+        int borrowedKey = rightSibling.keys.remove(0);
+        node.keys.add(borrowedKey);
+
+        // Update parent key
+        parent.keys.set(index, rightSibling.keys.get(0));
+    }
+
+    private void mergeWithLeftSibling(Node parent, int index) {
+        Node node = parent.children.get(index);
+        Node leftSibling = parent.children.get(index - 1);
+
+        // Move the parent key down to the left sibling
+        leftSibling.keys.add(parent.keys.remove(index - 1));
+
+        // Move all keys and children from the node to the left sibling
+        leftSibling.keys.addAll(node.keys);
+        leftSibling.children.addAll(node.children);
+
+        // Update parent's children list
+        parent.children.remove(index);
+    }
+
+    private void mergeWithRightSibling(Node parent, int index) {
+        Node node = parent.children.get(index);
+        Node rightSibling = parent.children.get(index + 1);
+
+        // Move the parent key down to the node
+        node.keys.add(parent.keys.remove(index));
+
+        // Move all keys and children from the right sibling to the node
+        node.keys.addAll(rightSibling.keys);
+        node.children.addAll(rightSibling.children);
+
+        // Update parent's children list
+        parent.children.remove(index + 1);
+    }
+
+    public void printTree() {
+        if (root == null) {
+            System.out.println("Tree is empty");
+            return;
+        }
+
+        Queue<Node> queue = new LinkedList<>();
+        queue.add(root);
+
+        while (!queue.isEmpty()) {
+            int levelSize = queue.size();
+
+            for (int i = 0; i < levelSize; i++) {
+                Node current = queue.poll();
+                System.out.print(current.keys + " ");
+
+                for (Node child : current.children) {
+                    queue.add(child);
+                }
+            }
+            System.out.println();
+        }
+    }
+
+    public static void main(String[] args) {
+        BPlusTree bPlusTree = new BPlusTree(7);
+
+        int[] keys = {83, 27, 20, 84, 29, 15, 58, 64, 11, 18};
+        for (int key : keys) {
+            bPlusTree.insert(key);
+            System.out.println("Inserted: " + key);
+            bPlusTree.printTree();
+            System.out.println("--------------------------");
+        }
+
+        int[] keysToDelete = {11, 15, 18, 20, 27, 29, 58, 64, 83, 84};
+        for (int key : keysToDelete) {
+            bPlusTree.delete(key);
+            System.out.println("Deleted: " + key);
+            bPlusTree.printTree();
+            System.out.println("--------------------------");
+        }
+    }
+}
